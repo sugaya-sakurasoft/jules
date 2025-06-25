@@ -30,6 +30,7 @@ kpi_database/
 1.  **リポジトリをクローンする (該当する場合) か、すべてのファイルが `kpi_database` ディレクトリにあることを確認してください。**
 
 2.  **プロジェクトディレクトリに移動します:**
+
     ```bash
     cd kpi_database
     ```
@@ -52,6 +53,7 @@ kpi_database/
 
 TypeScriptコードをJavaScriptにコンパイルするには、以下を実行します:
 
+
 ```bash
 npm run build
 ```
@@ -61,9 +63,11 @@ npm run build
 
 プロジェクトをビルドした後、以下のコマンドで移行スクリプトを実行できます:
 
+
 ```bash
 npm start
 ```
+
 このコマンドは、コンパイルされた `dist/main.js` ファイルをNode.jsで実行します。
 
 スクリプトは以下の処理を行います:
@@ -86,4 +90,3 @@ npm start
 -   ソースコードは `src` ディレクトリにあります。
 -   `.ts` ファイルに変更を加えた後、`npm start` を実行して効果を確認する前に、`npm run build` を使用してプロジェクトを再ビルドする必要があります。
 -   TypeScriptをグローバルにインストールする (`npm install -g typescript`) か、`node_modules` にインストールされたバージョンを `npx tsc` 経由で使用できます。
-```

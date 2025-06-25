@@ -138,6 +138,7 @@ export function parseDate(dateStringOrDate: string | Date, format: string): Date
   if (parsed.getMonth() !== month && month !== 0) { // month は 0-indexed
       if (!(format === "HH" && year === 0 && month === 0 && day ===1)) {
           console.error(`--- PARSEDATE VALIDATION ERROR: Month mismatch. Original (0-indexed): ${month}, Parsed (0-indexed): ${parsed.getMonth()}, DateString: ${dateString}`);
+
           throw new Error(`Date parsing resulted in month mismatch: ${dateString} (parsed: ${parsed.getMonth()}, expected: ${month})`);
       }
   }

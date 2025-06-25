@@ -1,3 +1,4 @@
+
 // kpi_database/src/main.ts (デバッグログ・timeout設定追加版)
 import { Pool as PgPool, PoolClient as PgPoolClient } from 'pg';
 import { Connection as MySqlConnection } from 'mysql2/promise';
@@ -23,6 +24,7 @@ const postgresConfigs = [
 
 interface PaymentData {
   start_date: string;
+
   coin: number;
   free_coin: number;
 }
@@ -39,6 +41,7 @@ async function moveData(): Promise<void> {
     console.log('DEBUG: MySQL connection successful.');
 
     let beginDate = new Date(2023, 4 - 1, 19);
+
     beginDate = setDatePart(beginDate, 'hours', 0);
     beginDate = setDatePart(beginDate, 'minutes', 0);
     beginDate = setDatePart(beginDate, 'seconds', 0);
