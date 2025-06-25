@@ -1,89 +1,92 @@
-# KPI Database Data Migration Script
+# KPIデータベース データ移行スクリプト
 
-This script is a TypeScript conversion of a Java program designed to migrate payment data from multiple PostgreSQL databases to a central MySQL database.
+このスクリプトは、複数のPostgreSQLデータベースから中央のMySQLデータベースへ支払いデータを移行するために設計されたJavaプログラムをTypeScriptに変換したものです。
 
-## Project Structure
+## プロジェクト構造
 
 ```
 kpi_database/
-├── dist/                     # Compiled JavaScript files (output of tsc)
-├── node_modules/             # Project dependencies (created by npm install)
-├── src/                      # TypeScript source files
-│   ├── db.ts                 # Database connection helpers
-│   ├── dateUtils.ts          # Date manipulation utility functions
-│   └── main.ts               # Main script logic
-├── .gitignore                # Specifies intentionally untracked files that Git should ignore
-├── package.json              # Project metadata and dependencies
-├── package-lock.json         # Records exact versions of dependencies
-└── tsconfig.json             # TypeScript compiler options
+├── dist/                     # コンパイルされたJavaScriptファイル (tscの出力)
+├── node_modules/             # プロジェクトの依存関係 (npm install により作成)
+├── src/                      # TypeScriptソースファイル
+│   ├── db.ts                 # データベース接続ヘルパー
+│   ├── dateUtils.ts          # 日付操作ユーティリティ関数
+│   └── main.ts               # メインスクリプトのロジック
+├── .gitignore                # Gitが無視するべき意図的に追跡されないファイルを指定
+├── package.json              # プロジェクトのメタデータと依存関係
+├── package-lock.json         # 依存関係の正確なバージョンを記録
+└── tsconfig.json             # TypeScriptコンパイラオプション
 ```
 
-## Prerequisites
+## 前提条件
 
--   Node.js (v14.x or later recommended)
--   npm (usually comes with Node.js)
--   Access to the source PostgreSQL databases
--   Access to the target MySQL database
+-   Node.js (v14.x 以降を推奨)
+-   npm (通常Node.jsに付属)
+-   移行元PostgreSQLデータベースへのアクセス権
+-   移行先MySQLデータベースへのアクセス権
 
-## Setup
+## セットアップ
 
-1.  **Clone the repository (if applicable) or ensure all files are in the `kpi_database` directory.**
+1.  **リポジトリをクローンする (該当する場合) か、すべてのファイルが `kpi_database` ディレクトリにあることを確認してください。**
 
-2.  **Navigate to the project directory:**
+2.  **プロジェクトディレクトリに移動します:**
+
     ```bash
     cd kpi_database
     ```
 
-3.  **Install dependencies:**
-    The `pg` (for PostgreSQL), `mysql2` (for MySQL), and `typescript` packages are required.
+3.  **依存関係をインストールします:**
+    `pg` (PostgreSQL用)、`mysql2` (MySQL用)、および `typescript` パッケージが必要です。
     ```bash
     npm install
     ```
-    *(Note: Due to limitations in the automated generation environment, `node_modules` might not have been pre-installed. This step is crucial.)*
+    *(注意: 自動生成環境の制限により、`node_modules` が事前にインストールされていない可能性があります。このステップは非常に重要です。)*
 
-4.  **Configure Database Connections:**
-    Open `src/main.ts` and update the database connection configurations:
-    -   `mySqlConfig`: Update with your MySQL server details (host, user, password, database, port).
-    -   `postgresConfigs`: Update the array with connection details for each of your PostgreSQL source databases.
+4.  **データベース接続を設定します:**
+    `src/main.ts` を開き、データベース接続設定を更新します:
+    -   `mySqlConfig`: ご自身のMySQLサーバー詳細 (ホスト、ユーザー、パスワード、データベース、ポート) に更新してください。
+    -   `postgresConfigs`: 各PostgreSQL移行元データベースの接続詳細で配列を更新してください。
 
-    **Security Note:** It is highly recommended to use environment variables or a configuration management system for sensitive information like database passwords, rather than hardcoding them directly in the source file.
+    **セキュリティに関する注意:** データベースのパスワードのような機密情報は、ソースファイルに直接ハードコーディングするのではなく、環境変数や設定管理システムを使用することを強く推奨します。
 
-## Building the Project
+## プロジェクトのビルド
 
-To compile the TypeScript code into JavaScript, run:
+TypeScriptコードをJavaScriptにコンパイルするには、以下を実行します:
+
 
 ```bash
 npm run build
 ```
-This will use `tsc` (the TypeScript compiler) and the settings in `tsconfig.json` to generate JavaScript files in the `dist` directory.
+これにより、`tsc` (TypeScriptコンパイラ) と `tsconfig.json` の設定が使用され、`dist` ディレクトリにJavaScriptファイルが生成されます。
 
-## Running the Script
+## スクリプトの実行
 
-After building the project, you can run the migration script using:
+プロジェクトをビルドした後、以下のコマンドで移行スクリプトを実行できます:
+
 
 ```bash
 npm start
 ```
-This command executes the compiled `dist/main.js` file using Node.js.
 
-The script will:
-1.  Connect to the target MySQL database.
-2.  Determine the date from which to start fetching data (based on the last `insert_date` in `stat_product_success` or a default start date).
-3.  Iterate through each configured PostgreSQL source:
-    a.  Connect to the PostgreSQL database.
-    b.  Fetch payment data within the calculated date range.
-    c.  Insert the fetched data into the `stat_product_success` table in the MySQL database.
-4.  Log progress and any errors to the console.
+このコマンドは、コンパイルされた `dist/main.js` ファイルをNode.jsで実行します。
 
-## Error Handling
+スクリプトは以下の処理を行います:
+1.  移行先のMySQLデータベースに接続します。
+2.  データ取得を開始する日付を決定します (`stat_product_success` の最終 `insert_date` に基づくか、デフォルトの開始日を使用)。
+3.  設定された各PostgreSQL移行元に対して反復処理を行います:
+    a.  PostgreSQLデータベースに接続します。
+    b.  計算された日付範囲内の支払いデータを取得します。
+    c.  取得したデータをMySQLデータベースの `stat_product_success` テーブルに挿入します。
+4.  進捗状況とエラーをコンソールに記録します。
 
--   Errors during individual PostgreSQL channel processing are logged to the console, but the script will attempt to continue with other channels.
--   Critical errors (e.g., inability to connect to the MySQL database) will terminate the script.
--   All database connections are intended to be closed gracefully, even if errors occur.
+## エラーハンドリング
 
-## Development
+-   個別のPostgreSQLチャネル処理中のエラーはコンソールに記録されますが、スクリプトは他のチャネルの処理を続行しようとします。
+-   致命的なエラー (例: MySQLデータベースへの接続不可) はスクリプトを終了させます。
+-   すべてのデータベース接続は、エラーが発生した場合でも正常に閉じられることを意図しています。
 
--   Source code is in the `src` directory.
--   After making changes to `.ts` files, you need to rebuild the project using `npm run build` before running `npm start` to see the effects.
--   You can install TypeScript globally (`npm install -g typescript`) or use the version installed in `node_modules` via `npx tsc`.
-```
+## 開発
+
+-   ソースコードは `src` ディレクトリにあります。
+-   `.ts` ファイルに変更を加えた後、`npm start` を実行して効果を確認する前に、`npm run build` を使用してプロジェクトを再ビルドする必要があります。
+-   TypeScriptをグローバルにインストールする (`npm install -g typescript`) か、`node_modules` にインストールされたバージョンを `npx tsc` 経由で使用できます。

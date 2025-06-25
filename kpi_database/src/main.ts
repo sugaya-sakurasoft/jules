@@ -1,170 +1,192 @@
+
+// kpi_database/src/main.ts (デバッグログ・timeout設定追加版)
 import { Pool as PgPool, PoolClient as PgPoolClient } from 'pg';
 import { Connection as MySqlConnection } from 'mysql2/promise';
 import { connectPostgres, connectMySql } from './db';
 import { formatDate, parseDate, setDatePart, addDate } from './dateUtils';
 
-// --- データベース接続設定 ---
-// TODO: 実際の環境に合わせて設定値を修正してください
 const mySqlConfig = {
   host: '210.168.61.137',
   user: 'kpi_teisen',
-  password: 'mobi0!kpiteisen@#$', // セキュリティのため環境変数などから読み込むことを推奨
+  password: 'mobi0!kpiteisen@#$',
   database: 'teisen_kpidb',
   port: 3306,
 };
 
 const postgresConfigs = [
-  { name: 'YAHOO', config: { user: 'postgres', host: 'localhost', database: 'teisen-tomoyo-mobage', password: 'postgres', port: 10602 } },
-  { name: 'GREE', config: { user: 'postgres', host: 'localhost', database: 'teisen-tomoyo-gree', password: 'postgres', port: 10602 } },
-  { name: 'DGAME', config: { user: 'postgres', host: 'localhost', database: 'teisen-tomoyo-dgame', password: 'postgres', port: 10602 } },
-  { name: 'YAMADA', config: { user: 'postgres', host: 'localhost', database: 'teisen_release_yamada_user_1', password: 'postgres', port: 10504 } },
-  { name: 'TSUTAYA', config: { user: 'postgres', host: 'localhost', database: 'teisen_release_tsutaya_user_1', password: 'postgres', port: 10504 } },
-  { name: 'GESOTEN', config: { user: 'postgres', host: 'localhost', database: 'teisen_release_tsutaya_user_1', password: 'postgres', port: 10504 } }, // TSUTAYAと同じDBだがクエリが異なる
+  { name: 'YAHOO', config: { user: 'postgres', host: 'localhost', database: 'teisen-tomoyo-mobage', password: 'postgres', port: 10602, connectionTimeoutMillis: 10000 } },
+  { name: 'GREE', config: { user: 'postgres', host: 'localhost', database: 'teisen-tomoyo-gree', password: 'postgres', port: 10602, connectionTimeoutMillis: 10000 } },
+  { name: 'DGAME', config: { user: 'postgres', host: 'localhost', database: 'teisen-tomoyo-dgame', password: 'postgres', port: 10602, connectionTimeoutMillis: 10000 } },
+  { name: 'YAMADA', config: { user: 'postgres', host: 'localhost', database: 'teisen_release_yamada_user_1', password: 'postgres', port: 10504, connectionTimeoutMillis: 10000 } },
+  { name: 'TSUTAYA', config: { user: 'postgres', host: 'localhost', database: 'teisen_release_tsutaya_user_1', password: 'postgres', port: 10504, connectionTimeoutMillis: 10000 } },
+  { name: 'GESOTEN', config: { user: 'postgres', host: 'localhost', database: 'teisen_release_tsutaya_user_1', password: 'postgres', port: 10504, connectionTimeoutMillis: 10000 } },
 ];
 
 interface PaymentData {
-  start_date: string; // "YYYY-MM-DD HH"
+  start_date: string;
+
   coin: number;
   free_coin: number;
 }
 
 async function moveData(): Promise<void> {
   let conMySql: MySqlConnection | null = null;
-  let conPos: PgPool | null = null; // PostgreSQLはPoolを使用
+  let conPos: PgPool | null = null;
+
+  console.log('DEBUG: moveData function started.'); // 関数開始ログ
 
   try {
-    // MySQLデータベース接続
+    console.log('DEBUG: Attempting to connect to MySQL...');
     conMySql = await connectMySql(mySqlConfig);
+    console.log('DEBUG: MySQL connection successful.');
 
-    // --- 開始日の決定 ---
-    let beginDate = new Date(2023, 4 - 1, 19); // Javaの月は-1 (2023, May, 19) / Calendarの月は0-indexedなので4はMay。JSのDateも0-indexed
+    let beginDate = new Date(2023, 4 - 1, 19);
+
     beginDate = setDatePart(beginDate, 'hours', 0);
     beginDate = setDatePart(beginDate, 'minutes', 0);
     beginDate = setDatePart(beginDate, 'seconds', 0);
     beginDate.setMilliseconds(0);
-
+    console.log('DEBUG: Default beginDate initialized to:', formatDate(beginDate, 'yyyy-MM-dd'));
 
     const getMaxInsertDateSql = "SELECT MAX(insert_date) AS start_date FROM stat_product_success";
+    console.log('DEBUG: Executing SQL to get max insert_date from MySQL:', getMaxInsertDateSql);
     const [rows]: any = await conMySql.execute(getMaxInsertDateSql);
+    console.log('DEBUG: Result from getMaxInsertDateSql:', rows);
 
-    if (rows && rows.length > 0 && rows[0].start_date) {
-      const startDateStr = rows[0].start_date; // YYYY-MM-DD 形式のはず
-      // MySQLのDATE型は 'YYYY-MM-DD' で返るので、parseDateは 'yyyy-MM-dd' を期待
-      const parsedStartDate = parseDate(startDateStr, 'yyyy-MM-dd');
+    if (rows && rows.length > 0 && rows[0] && rows[0].start_date !== null && rows[0].start_date !== undefined) {
+      const startDateVal = rows[0].start_date;
+      console.log('DEBUG: [MySQL MAX(insert_date)] Raw start_date value:', startDateVal, 'Type:', typeof startDateVal);
+
+      const parsedStartDate = parseDate(startDateVal, 'yyyy-MM-dd');
       beginDate = addDate(parsedStartDate, 'day', 1);
+      console.log('DEBUG: beginDate updated from MySQL MAX(insert_date) to:', formatDate(beginDate, 'yyyy-MM-dd'));
+    } else {
+      console.log('DEBUG: No valid start_date found from stat_product_success or table is empty. Using default beginDate.');
     }
     console.log("Processing from date:", formatDate(beginDate, 'yyyy-MM-dd'));
 
-    // --- 終了日の設定 ---
-    let endDate = new Date(); // 現在日時
+    let endDate = new Date();
     endDate = setDatePart(endDate, 'hours', 0);
     endDate = setDatePart(endDate, 'minutes', 0);
     endDate = setDatePart(endDate, 'seconds', 0);
-    endDate.setMilliseconds(0); // この日の前日までを処理対象とするので、この日の0時まで
+    endDate.setMilliseconds(0);
     console.log("Processing until date (exclusive):", formatDate(endDate, 'yyyy-MM-dd'));
 
-
     const beginDateStr = formatDate(beginDate, 'yyyy-MM-dd');
-    const endDateStr = formatDate(endDate, 'yyyy-MM-dd'); // SQLのBETWEENでは endDateStr の日付も含まれるように調整が必要な場合がある
+    const endDateStr = formatDate(endDate, 'yyyy-MM-dd');
 
     for (const pgSource of postgresConfigs) {
       let userChannel = pgSource.name;
-      console.log(`\n--- Processing channel: ${userChannel} ---`);
+      console.log(`\nDEBUG: === LOOP START: Processing channel: ${userChannel} ===`); // ループ開始
+      conPos = null;
+      let pgClient: PgPoolClient | null = null;
+      let count = 0;
 
       try {
+        console.log(`DEBUG: [${userChannel}] PostgreSQL config to be used:`, JSON.stringify(pgSource.config)); // 使用する設定
         conPos = await connectPostgres(pgSource.config);
-        let pgClient: PgPoolClient | null = null; // PoolからClientを取得して使用
+        console.log(`DEBUG: [${userChannel}] connectPostgres call completed. Pool should be established.`);
 
-        try {
-            pgClient = await conPos.connect();
+        console.log(`DEBUG: [${userChannel}] Attempting to get a client from the pool...`);
+        pgClient = await conPos.connect();
+        console.log(`DEBUG: [${userChannel}] Successfully got a client from the pool.`);
 
-            let sql = `SELECT TO_CHAR(start_date, 'YYYY-MM-DD HH24') AS start_date, SUM(coin) AS coin, 0 AS free_coin FROM tomoyo_payment WHERE start_date >= '${beginDateStr}' AND start_date < '${endDateStr}' GROUP BY 1 ORDER BY 1`;
-
-            switch (userChannel) {
-              case 'YAMADA':
-                sql = `SELECT TO_CHAR(start_date, 'YYYY-MM-DD HH24') AS start_date, SUM(coin) AS coin, SUM(free_coin) AS free_coin FROM payment WHERE is_finished = TRUE AND start_date >= '${beginDateStr}' AND start_date < '${endDateStr}' GROUP BY 1 ORDER BY 1`;
-                break;
-              case 'TSUTAYA':
-                sql = `SELECT TO_CHAR(p.start_date, 'YYYY-MM-DD HH24') AS start_date, SUM(p.coin) AS coin, SUM(p.free_coin) AS free_coin FROM payment p INNER JOIN user_t u ON p.user_id = u.id AND u.ooid NOT LIKE 'gs%' WHERE p.is_finished = TRUE AND p.start_date >= '${beginDateStr}' AND p.start_date < '${endDateStr}' GROUP BY 1 ORDER BY 1`;
-                break;
-              case 'GESOTEN':
-                sql = `SELECT TO_CHAR(p.start_date, 'YYYY-MM-DD HH24') AS start_date, SUM(p.coin) AS coin, SUM(p.free_coin) AS free_coin FROM payment p INNER JOIN user_t u ON p.user_id = u.id AND u.ooid LIKE 'gs%' WHERE p.is_finished = TRUE AND p.start_date >= '${beginDateStr}' AND p.start_date < '${endDateStr}' GROUP BY 1 ORDER BY 1`;
-                break;
-            }
-
-            console.log(`Executing query on ${userChannel}:\n${sql}`);
-            const { rows: resultRows } = await pgClient.query<PaymentData>(sql);
-
-            let count = 0;
-            if (resultRows && resultRows.length > 0) {
-              for (const row of resultRows) {
-                const startDateFromRow = parseDate(row.start_date, 'yyyy-MM-dd HH'); // "YYYY-MM-DD HH"
-
-                const insertDate = formatDate(startDateFromRow, 'yyyy-MM-dd');
-                const insertTime = formatDate(startDateFromRow, 'HH'); // 時間のみ
-                const realCash = Number(row.coin) || 0;
-                const freeCoin = Number(row.free_coin) || 0;
-                const updateDt = formatDate(new Date(), 'yyyy-MM-dd HH:mm:ss');
-
-                const insertSql = `
-                  INSERT INTO stat_product_success
-                  (insert_date, insert_time, user_channel, gamecode, server, product, real_cash, event_cash, count, update_dt)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                `;
-                const values = [
-                  insertDate,       // insert_date
-                  parseInt(insertTime, 10), // insert_time (hour as number)
-                  userChannel,      // user_channel
-                  3,                // gamecode
-                  1,                // server
-                  1,                // product
-                  realCash,         // real_cash
-                  freeCoin,         // event_cash (original had rs.getInt("free_coin"))
-                  1,                // count
-                  updateDt          // update_dt
-                ];
-
-                // console.log("Inserting to MySQL:", insertSql, values);
-                await conMySql.execute(insertSql, values);
-                count++;
-              }
-            }
-            console.log(`${userChannel}: ${count} records inserted.`);
-
-        } finally {
-            if (pgClient) {
-                pgClient.release(); // ClientをPoolに返却
-            }
+        let sql = `SELECT TO_CHAR(start_date, 'YYYY-MM-DD HH24') AS start_date, SUM(coin) AS coin, 0 AS free_coin FROM tomoyo_payment WHERE start_date >= '${beginDateStr}' AND start_date < '${endDateStr}' GROUP BY 1 ORDER BY 1`;
+        switch (userChannel) {
+          case 'YAMADA':
+            sql = `SELECT TO_CHAR(start_date, 'YYYY-MM-DD HH24') AS start_date, SUM(coin) AS coin, SUM(free_coin) AS free_coin FROM payment WHERE is_finished = TRUE AND start_date >= '${beginDateStr}' AND start_date < '${endDateStr}' GROUP BY 1 ORDER BY 1`;
+            break;
+          case 'TSUTAYA':
+            sql = `SELECT TO_CHAR(p.start_date, 'YYYY-MM-DD HH24') AS start_date, SUM(p.coin) AS coin, SUM(p.free_coin) AS free_coin FROM payment p INNER JOIN user_t u ON p.user_id = u.id AND u.ooid NOT LIKE 'gs%' WHERE p.is_finished = TRUE AND p.start_date >= '${beginDateStr}' AND p.start_date < '${endDateStr}' GROUP BY 1 ORDER BY 1`;
+            break;
+          case 'GESOTEN':
+            sql = `SELECT TO_CHAR(p.start_date, 'YYYY-MM-DD HH24') AS start_date, SUM(p.coin) AS coin, SUM(p.free_coin) AS free_coin FROM payment p INNER JOIN user_t u ON p.user_id = u.id AND u.ooid LIKE 'gs%' WHERE p.is_finished = TRUE AND p.start_date >= '${beginDateStr}' AND p.start_date < '${endDateStr}' GROUP BY 1 ORDER BY 1`;
+            break;
         }
+
+        console.log(`DEBUG: [${userChannel}] Executing query:\n${sql}`); // SQL実行前
+        const { rows: resultRows } = await pgClient.query<PaymentData>(sql);
+        console.log(`DEBUG: [${userChannel}] Rows received from PostgreSQL: ${resultRows ? resultRows.length : 'null or undefined'}`); // 結果行数
+
+        if (resultRows && resultRows.length > 0) {
+          for (const row of resultRows) {
+            const pgRowStartDateVal = row.start_date;
+            console.log(`DEBUG: [${userChannel}] Raw row.start_date from PG:`, pgRowStartDateVal, `Type:`, typeof pgRowStartDateVal); // PGからの生データ
+
+            const startDateFromRow = parseDate(pgRowStartDateVal, 'yyyy-MM-dd HH');
+
+            const insertDate = formatDate(startDateFromRow, 'yyyy-MM-dd');
+            const insertTime = formatDate(startDateFromRow, 'HH');
+            const realCash = Number(row.coin) || 0;
+            const freeCoin = Number(row.free_coin) || 0;
+            const updateDt = formatDate(new Date(), 'yyyy-MM-dd HH:mm:ss');
+
+            const insertSql = `
+              INSERT INTO stat_product_success
+              (insert_date, insert_time, user_channel, gamecode, server, product, real_cash, event_cash, count, update_dt)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `;
+            const values = [
+              insertDate, parseInt(insertTime, 10), userChannel, 3, 1, 1,
+              realCash, freeCoin, 1, updateDt
+            ];
+
+            await conMySql.execute(insertSql, values);
+            count++;
+          }
+        }
+        console.log(`${userChannel}: ${count} records inserted.`);
+
       } catch (e: any) {
-        console.error(`Error processing channel ${userChannel}:`, e.message);
-        // エラーが発生しても次のチャネルの処理を続ける
+        console.error(`ERROR: Error processing channel ${userChannel}:`, e.message); // チャネルごとのエラー
+        if (e.stack) console.error(`Stack trace for ${userChannel}:`, e.stack);
       } finally {
-        if (conPos) {
-          await conPos.end(); // Poolを閉じる
-          console.log(`PostgreSQL connection for ${userChannel} closed.`);
-          conPos = null;
+        console.log(`DEBUG: [${userChannel}] Entering finally block for PostgreSQL client and pool.`); // finally開始
+        if (pgClient) {
+          console.log(`DEBUG: [${userChannel}] Releasing PostgreSQL client...`);
+          pgClient.release();
+          console.log(`DEBUG: [${userChannel}] PostgreSQL client released.`);
+        } else {
+          console.log(`DEBUG: [${userChannel}] pgClient was null, no client to release.`);
         }
+        if (conPos) {
+          console.log(`DEBUG: [${userChannel}] Attempting to close PostgreSQL connection pool...`);
+          await conPos.end();
+          console.log(`DEBUG: [${userChannel}] PostgreSQL connection pool for ${userChannel} closed.`);
+        } else {
+          console.log(`DEBUG: [${userChannel}] conPos was null, no pool to close.`);
+        }
+        conPos = null;
+        console.log(`DEBUG: [${userChannel}] Exiting finally block for PostgreSQL.`); // finally終了
       }
+      console.log(`DEBUG: === LOOP END: Finished processing for channel: ${userChannel} ===`); // ループ終了
     }
 
   } catch (error: any) {
-    console.error("A critical error occurred in moveData:", error.message);
-    // Java版ではここでスタックトレースを出力して終了していた
-    // Node.jsでは通常プロセスが終了するが、明示的に process.exit(1) も可能
-    process.exitCode = 1; // エラーコードを設定して終了
+    console.error("A critical error occurred in moveData:", error.message); // 全体エラー
+    if (error.stack) {
+      console.error("Full error object and stack trace:", error);
+    } else {
+      console.error("Full error object (no stack):", error);
+    }
+    process.exitCode = 1;
   } finally {
+    console.log("DEBUG: Entering final finally block for MySQL connection."); // 最終finally開始
     if (conMySql) {
+      console.log("DEBUG: Attempting to close MySQL connection...");
       await conMySql.end();
       console.log("MySQL connection closed.");
+    } else {
+      console.log("DEBUG: conMySql was null, no MySQL connection to close.");
     }
     console.log("Data migration process finished.");
+    console.log("DEBUG: moveData function ended."); // 関数終了ログ
   }
 }
 
-// --- メイン処理の実行 ---
+console.log('DEBUG: Script execution starting...'); // スクリプト開始ログ
 moveData().catch(err => {
-  // moveData内でキャッチされなかった予期せぬエラー
-  console.error("Unhandled error in moveData execution:", err);
-  process.exit(1); // 強制終了
+  console.error("Unhandled error at the top level of moveData execution:", err);
+  process.exit(1);
 });
+```
